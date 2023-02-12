@@ -1,0 +1,139 @@
+---
+title: "Analyzing Game Data"
+author: "Matt Colbert"
+date: "2023-01-04"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Importing Data and Setup
+
+```{r}
+rm(list=ls())
+library(tidyverse)
+library(patchwork)
+vgsales_union <- read.csv("VGSales_Union.csv")
+vgsales_intersect <- read.csv("VGSales_Intersect.csv")
+```
+
+## Data Frame by Publisher
+
+Group the union data by publisher and create a new data frame that summarizes information based upon the publisher.
+
+```{r}
+publisher_df <- group_by(vgsales_union, publisher) %>% 
+  summarize(total_sales = sum(total_sales, na.rm=T), na_sales=sum(na_sales, na.rm=T), user_score = mean(user_score, na.rm=T), meta_score = mean(meta_score, na.rm=T), number_of_games = n())
+publisher_df <- filter(publisher_df, (!is.na(publisher_df$publisher) & publisher_df$publisher != "Unknown"))
+write.csv(slice_max(publisher_df, total_sales, n=10), "publisher_sales.csv")
+```
+
+Graphing the number of games in relation to the total sales and finding the correlation of it. Also finding the mean of the meta score to compare to the slice max from before.
+
+```{r}
+cor(publisher_df$number_of_games, publisher_df$total_sales)
+ggplot(publisher_df, aes(number_of_games, total_sales)) + geom_point() + labs(x = "Number of Games", y = "Total Sales", title="Number of Games Released vs. Total Sales", subtitle = "Done by Publisher")
+ggsave("./images/publisher_games_sales.png")
+mean(publisher_df$meta_score, na.rm=T)
+cor(publisher_df$number_of_games, publisher_df$meta_score, use = "complete.obs")
+ggplot(publisher_df, aes(number_of_games, meta_score)) + geom_point() + labs(x = "Number of Games", y="Meta Score", title="Comparing Meta Score and Number of Games Released", subtitle="Doen by Publisher")
+ggsave("./images/Publisher_meta.png")
+```
+
+## Comparing Review Scores and Sales
+
+Finding the correlation between total sales, na sales, meta score, and user score.
+
+```{r}
+cor(vgsales_intersect$na_sales, vgsales_intersect$total_sales, use="complete.obs")
+cor(vgsales_intersect$user_score, vgsales_intersect$meta_score, use="complete.obs")
+cor(vgsales_intersect$meta_score, vgsales_intersect$total_sales, use="complete.obs")
+cor(vgsales_intersect$user_score, vgsales_intersect$total_sales, use="complete.obs")
+```
+
+```{r}
+sum(vgsales_union$na_sales, na.rm=T)/sum(vgsales_union$total_sales, na.rm=T)
+mean(vgsales_union$meta_score, na.rm=T)-(mean(vgsales_union$user_score, na.rm=T)*10)
+(median(vgsales_union$user_score, na.rm=T)*10)-(mean(vgsales_union$user_score, na.rm=T)*10)
+review_scores <- data.frame(
+  values = c(vgsales_union$meta_score[!is.na(vgsales_union$meta_score)], (vgsales_union$user_score[!is.na(vgsales_union$user_score)]*10)), 
+  group = c(rep("meta_score", length(vgsales_union$meta_score[!is.na(vgsales_union$meta_score)])), rep("user_score", length(vgsales_union$user_score[!is.na(vgsales_union$user_score)]))))
+ggplot(review_scores, aes(x=values, fill=group)) + geom_histogram(alpha=0.2, position="identity")
+ggsave("./images/review_scores_histogram.png")
+```
+
+
+```{r}
+(ggplot(vgsales_union) + geom_boxplot(aes(y=meta_score)) + labs(y="Meta Score", title = "Meta Score Boxplot")) + (ggplot(vgsales_union)+geom_boxplot(aes(y=user_score)) + labs(y="User Score", title = "User Score Boxplot"))
+ggsave("./images/Scores_Boxplot.png")
+```
+
+
+Plotting the comparison of na sales and total sales, as well as meta score and user score. I removed the sales of Wii Sports, as it was such a large outlier that I was unable to get a great visualization of the rest of the graph. 
+
+```{r}
+filter(vgsales_intersect, game_title != "Wii Sports") %>% ggplot(aes(x=na_sales, y=total_sales)) + geom_point()
+```
+
+Limiting to the top sales and finding the correlation between the meta score and the sales of the highest selling games. 
+
+```{r}
+top_sales <- slice_max(vgsales_intersect, total_sales, n=500)
+cor(top_sales$meta_score, top_sales$total_sales)
+```
+
+
+## Comparing Release Date to different variables
+
+Converting the month year format into a true date format, so that it can be used in the scatterplots that follow. Also creates a new data frame that is grouped by month and contains the average review scores, the sum of sales, and the number of games released in that month.
+
+```{r}
+vgsales_union$release_date <- as.Date(paste("01", vgsales_union$release_date, sep=" "), format="%d %B %Y")
+by_month <- group_by(vgsales_union, release_date) %>% summarize(total_sales = sum(total_sales, na.rm=T), na_sales=sum(na_sales, na.rm=T), user_score = mean(user_score, na.rm=T), meta_score = mean(meta_score, na.rm=T), number_of_games = n())
+```
+
+Finding the months with the highest number of games released and the highest number of sales produced.
+
+```{r}
+slice_max(by_month, number_of_games, n=10)
+slice_max(by_month, total_sales, n=10)
+slice_max(by_month, number_of_games, n=10)
+```
+
+Finding the correlation between release date and the number of games that are released in a given time frame and plotting it onto a graph. 
+
+```{r}
+cor(as.numeric(by_month$release_date), by_month$number_of_games, use="complete.obs")
+p1 <- filter(by_month, !is.na(release_date)) %>% ggplot(aes(x=release_date, y=number_of_games)) + geom_point() + labs(y="Number of Games Released", x="Release Date", title="Number of Games Released")
+p2 <- filter(by_month, !is.na(release_date)) %>% ggplot(aes(x=release_date, y=total_sales)) + geom_point() + labs(y="Total Sales", x="Release Date", title="Total Video Game Sales by Month")
+p1+p2
+ggsave("./images/games_by_month.png")
+```
+
+
+Finding the correlation between meta score and release date and graphing the release date compared to the user and meta scores. 
+
+```{r}
+cor(as.numeric(by_month$release_date), by_month$meta_score, use="complete.obs")
+cor(as.numeric(by_month$release_date), by_month$user_score, use="complete.obs")
+filter(by_month, !is.na(meta_score) & !is.na(user_score)) %>% ggplot(aes(x=release_date)) + geom_point(aes(y=meta_score, col="meta score")) + geom_point(aes(y=user_score*10, col="user score")) + scale_color_manual(values=c("red", "blue")) + labs(x = "Release Date", y = "Review Scores", title = "Ratings of Video Games over Time", caption = "User score is multiplied by ten to match meta score")
+ggsave("./images/review_scores_by_month.png")
+```
+
+Finding the correlation between release date and total sales and creating a graph that compares release date with total sales and North American sales. 
+
+```{r}
+cor(as.numeric(by_month$release_date), by_month$total_sales, use="complete.obs")
+cor(as.numeric(by_month$release_date), by_month$na_sales, use="complete.obs")
+filter(by_month, !is.na(total_sales) & !is.na(na_sales)) %>% ggplot(aes(x=release_date)) + geom_point(aes(y=total_sales, col="total sales")) + geom_point(aes(y=na_sales, col="North American Sales")) + scale_color_manual(values=c("red", "blue")) + labs(x = "Release Date", y = "Sales", title = "Sales of Video Games over Time")
+ggsave("./images/game_sales_by_month.png")
+```
+
+Turns the date format back into the month year that it was at the beginning of this section. 
+
+```{r}
+vgsales_union$release_date <- format(vgsales_union$release_date, "%B %Y")
+```
+

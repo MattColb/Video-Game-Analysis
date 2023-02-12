@@ -1,0 +1,27 @@
+rm(list=ls())
+library(xml2)
+user_agent <- "Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Mobile Safari/537.36"
+Start <- Sys.time()
+#185 Pages
+all_games_df <- data.frame()
+for (i in 0:185){
+  print(i)
+  curr_page <- paste("https://www.metacritic.com/browse/games/score/userscore/all/all/filtered?view=detailed&page=", i, sep="")
+  page <- read_html(curr_page, user_agent)
+  Sys.sleep(5) 
+  games <- xml_text(xml_find_all(page, "//a[@class='title']"))
+  summary <- xml_text(xml_find_all(page, "//div[@class='summary']"))
+  platform <- xml_text(xml_find_all(page, "//div[@class='clamp-details']//span[@class='data']"))
+  release_date <- xml_text(xml_find_all(page, "//div[@class='clamp-details']/span"))
+  meta_score <- xml_text(xml_find_all(page, "//div[@class='clamp-metascore']//a[@class='metascore_anchor']"))
+  user_score <- xml_text(xml_find_all(page, "//div[@class='clamp-userscore']//a[@class='metascore_anchor']"))
+  games_ratings_df <- data.frame(games, summary, platform, release_date, meta_score, user_score)
+  all_games_df <- rbind(all_games_df, games_ratings_df)
+  rv <- sample(3:15, 1)
+  Sys.sleep(rv)
+}
+write.csv(all_games_df, "Metacritic.csv")
+Stop <- Sys.time()
+print(Start)
+print(Stop)
+print(Stop-Start)
